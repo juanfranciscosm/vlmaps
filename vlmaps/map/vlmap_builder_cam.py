@@ -138,7 +138,7 @@ class VLMapBuilderCam:
             pix_feats_intr = get_sim_cam_mat(pix_feats.shape[2], pix_feats.shape[3])
 
             # backproject depth point cloud
-            pc = self._backproject_depth(depth, calib_mat, depth_sample_rate, min_depth=0.1, max_depth=100)
+            pc = self._backproject_depth(depth, calib_mat, depth_sample_rate, min_depth=0.1, max_depth=10)
 
             # transform the point cloud to global frame (init base frame)
             transform_tf = camera_pose_tf  # @ self.habitat2cam_rot_tf
@@ -170,6 +170,12 @@ class VLMapBuilderCam:
                 radial_dist_sq = np.sum(np.square(p_local))
                 sigma_sq = 0.6
                 alpha = np.exp(-radial_dist_sq / (2 * sigma_sq))
+
+                # Avoid float32 underflow. Very small alpha values become
+                # exactly zero when stored in the float32 weight array,
+                # which can later produce a 0/0 division and NaN features.
+                if (not np.isfinite(alpha)) or alpha <= np.finfo(np.float32).tiny:
+                    continue
 
                 # update map features
                 if not (px < 0 or py < 0 or px >= pix_feats.shape[3] or py >= pix_feats.shape[2]):
